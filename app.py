@@ -75,15 +75,6 @@ if "current_file_name" not in st.session_state:
     st.session_state.current_file_name = None
 
 
-# Cached warm-up of embedding model
-@st.cache_resource(show_spinner=False)
-def load_cached_embeddings():
-    return get_embedding_model("all-MiniLM-L6-v2")
-
-
-# Pre-warm embeddings in background
-load_cached_embeddings()
-
 
 # ==============================================================================
 # SIDEBAR: Configuration, Credentials, and Upload

@@ -102,12 +102,13 @@ with st.sidebar:
     model_choice = st.selectbox(
         "Groq LLM Engine",
         options=[
-            "llama-3.1-8b-instant",
+            "openai/gpt-oss-20b",
             "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
             "mixtral-8x7b-32768"
         ],
         index=0,
-        help="Llama-3.1-8b-instant provides blazing fast inference with deterministic temperature=0.0."
+        help="Deterministic temperature is locked at 0.0 for zero hallucination."
     )
 
     # 3. Retrieval Parameters

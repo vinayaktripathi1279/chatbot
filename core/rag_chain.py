@@ -44,7 +44,7 @@ def format_docs(docs: List[Document]) -> str:
 def build_rag_chain(
     vector_store: Chroma,
     api_key: str,
-    model_name: str = "llama-3.1-8b-instant",
+    model_name: str = "openai/gpt-oss-20b",
     top_k: int = 4
 ):
     """
@@ -53,7 +53,7 @@ def build_rag_chain(
     Args:
         vector_store: Initialized Chroma vector store.
         api_key: Groq API key.
-        model_name: Model identifier (defaults to 'llama-3.1-8b-instant').
+        model_name: Model identifier (defaults to 'openai/gpt-oss-20b').
         top_k: Number of nearest chunks to retrieve.
         
     Returns:

@@ -5,7 +5,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.document_processor import load_and_split_pdf
-from core.vector_store import create_vector_store
+from core.vector_store import create_vector_store, get_embedding_model
 from core.rag_chain import build_rag_chain, execute_strict_rag_stream
 
 # Load environment variables from .env file if available
@@ -34,9 +34,9 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
     .status-badge {
-        padding: 4px 10px;
+        padding: 5px 12px;
         border-radius: 6px;
-        font-size: 0.85rem;
+        font-size: 0.88rem;
         font-weight: 600;
         display: inline-block;
         margin-top: 5px;
@@ -50,13 +50,6 @@ st.markdown("""
         background-color: #FEF3C7;
         color: #92400E;
         border: 1px solid #FCD34D;
-    }
-    .engine-badge {
-        font-size: 0.8rem;
-        color: #475569;
-        background: #F1F5F9;
-        padding: 2px 6px;
-        border-radius: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -80,6 +73,16 @@ if "chunk_count" not in st.session_state:
 
 if "current_file_name" not in st.session_state:
     st.session_state.current_file_name = None
+
+
+# Cached warm-up of embedding model
+@st.cache_resource(show_spinner=False)
+def load_cached_embeddings():
+    return get_embedding_model("all-MiniLM-L6-v2")
+
+
+# Pre-warm embeddings in background
+load_cached_embeddings()
 
 
 # ==============================================================================
@@ -132,49 +135,58 @@ with st.sidebar:
         help="Upload the PDF to extract, chunk, and index."
     )
 
+    # Detect if user uploaded a different document
+    if uploaded_pdf is not None and st.session_state.current_file_name != uploaded_pdf.name:
+        st.session_state.document_processed = False
+        st.session_state.retriever = None
+        st.session_state.chain = None
+
     # Process Document Button
     if uploaded_pdf is not None:
         process_button = st.button("🚀 Process & Index PDF", use_container_width=True, type="primary")
 
-        # Process if button clicked or if a new file is uploaded
-        if process_button or (st.session_state.current_file_name != uploaded_pdf.name and not st.session_state.document_processed):
+        # Explicit button trigger to prevent duplicate concurrent runs
+        if process_button:
             if not api_key:
                 st.error("Please provide a Groq API Key before proceeding.")
             else:
-                with st.spinner("Extracting text and chunking (Size: 1000, Overlap: 200)..."):
-                    try:
-                        # 1. Chunking
-                        chunks = load_and_split_pdf(
-                            file_bytes_or_path=uploaded_pdf,
-                            file_name=uploaded_pdf.name,
-                            chunk_size=1000,
-                            chunk_overlap=200
-                        )
-                        st.session_state.chunk_count = len(chunks)
+                progress_placeholder = st.empty()
+                with progress_placeholder.container():
+                    with st.spinner("Processing PDF (extracting text, chunking, and embedding)..."):
+                        try:
+                            # 1. Chunking
+                            chunks = load_and_split_pdf(
+                                file_bytes_or_path=uploaded_pdf,
+                                file_name=uploaded_pdf.name,
+                                chunk_size=1000,
+                                chunk_overlap=200
+                            )
 
-                        # 2. Vector DB Indexing with local HuggingFace embeddings
-                        with st.spinner(f"Vectorizing {len(chunks)} chunks with HuggingFace (all-MiniLM-L6-v2)..."):
+                            # 2. Vector DB Indexing with cached HuggingFace embeddings
                             vector_store = create_vector_store(
                                 documents=chunks
                             )
 
-                        # 3. Build Strict RAG Chain with Groq
-                        retriever, chain = build_rag_chain(
-                            vector_store=vector_store,
-                            api_key=api_key,
-                            model_name=model_choice,
-                            top_k=top_k
-                        )
+                            # 3. Build Strict RAG Chain with Groq
+                            retriever, chain = build_rag_chain(
+                                vector_store=vector_store,
+                                api_key=api_key,
+                                model_name=model_choice,
+                                top_k=top_k
+                            )
 
-                        st.session_state.retriever = retriever
-                        st.session_state.chain = chain
-                        st.session_state.document_processed = True
-                        st.session_state.current_file_name = uploaded_pdf.name
-                        st.session_state.messages = []  # Reset chat on new document
+                            st.session_state.chunk_count = len(chunks)
+                            st.session_state.retriever = retriever
+                            st.session_state.chain = chain
+                            st.session_state.document_processed = True
+                            st.session_state.current_file_name = uploaded_pdf.name
+                            st.session_state.messages = []  # Reset chat on new document
 
-                        st.success(f"Indexed {len(chunks)} chunks successfully!")
-                    except Exception as e:
-                        st.error(f"Error during ingestion: {str(e)}")
+                            st.success(f"Indexed {len(chunks)} chunks successfully!")
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(f"Error during ingestion: {str(e)}")
 
     st.divider()
 
@@ -227,7 +239,7 @@ if prompt := st.chat_input("Ask a question about your uploaded document..."):
 
     # Guard 2: Verify Document Processed
     if not st.session_state.document_processed or st.session_state.chain is None:
-        st.warning("⚠️ Please upload and process a PDF document first using the sidebar.")
+        st.warning("⚠️ Please upload and process a PDF document first using the sidebar button.")
         st.stop()
 
     # 1. Render User Message

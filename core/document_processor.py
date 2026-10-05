@@ -32,6 +32,8 @@ def load_and_split_pdf(
     try:
         # If passed as bytes or a stream (e.g. from Streamlit UploadedFile)
         if hasattr(file_bytes_or_path, "read"):
+            if hasattr(file_bytes_or_path, "seek"):
+                file_bytes_or_path.seek(0)
             suffix = os.path.splitext(file_name)[-1] or ".pdf"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
                 tmp_file.write(file_bytes_or_path.read())
